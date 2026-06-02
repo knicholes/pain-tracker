@@ -77,7 +77,7 @@ input[type=text]{width:100%;background:#0f172a;border:1px solid #334155;border-r
       </div>
     </div>
 
-    <svg id="body-svg" viewBox="0 0 320 435" style="width:100%;display:block;padding:0 10px;touch-action:none;user-select:none;">
+    <svg id="body-svg" viewBox="0 0 320 435" style="width:100%;display:block;padding:0 10px;touch-action:manipulation;user-select:none;">
       <!-- Body outline -->
       <ellipse cx="160" cy="42" rx="26" ry="28" fill="#1e293b" stroke="#334155" stroke-width="1.5"/>
       <rect x="138" y="68" width="44" height="20" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1.5"/>
@@ -309,16 +309,17 @@ function renderSVG() {
 
     const grp = svgEl("g", {});
 
-    // Robust press handling: track start time + whether a long-press already fired.
-    let pressStart = 0;
+    // Pointer Events: one unified API that works for touch, mouse, and pen on all
+    // modern browsers including Android Chrome. No preventDefault needed.
     let longFired = false;
     let pressTimer = null;
-    let moved = false;
+    let startX = 0, startY = 0, moved = false;
 
     function onDown(e) {
-      pressStart = Date.now();
       longFired = false;
       moved = false;
+      startX = e.clientX;
+      startY = e.clientY;
       pressTimer = setTimeout(() => {
         longFired = true;
         if (!multiSelect) {
@@ -327,301 +328,36 @@ function renderSVG() {
         }
       }, 500);
     }
-    function onMove() {
-      moved = true;
-      if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+    function onMove(e) {
+      if (Math.abs(e.clientX - startX) > 12 || Math.abs(e.clientY - startY) > 12) {
+        moved = true;
+        if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+      }
     }
     function onUp(e) {
       if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
-      if (longFired || moved) return; // long-press already handled, or it was a drag
-      // short tap
+      if (longFired || moved) return;
       if (multiSelect) {
         toggleMultiId(p.id);
       } else {
         openDetail(p);
       }
     }
+    function onCancel() {
+      if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+    }
 
-    grp.addEventListener("touchstart", e => { e.preventDefault(); onDown(e); }, {passive:false});
-    grp.addEventListener("touchmove", onMove, {passive:true});
-    grp.addEventListener("touchend", e => { e.preventDefault(); onUp(e); }, {passive:false});
-    grp.addEventListener("touchcancel", () => { if (pressTimer) clearTimeout(pressTimer); });
-    // Desktop fallback
-    grp.addEventListener("mousedown", onDown);
-    grp.addEventListener("mouseup", onUp);
-    grp.addEventListener("mouseleave", () => { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } });
+    grp.addEventListener("pointerdown", onDown);
+    grp.addEventListener("pointermove", onMove);
+    grp.addEventListener("pointerup", onUp);
+    grp.addEventListener("pointercancel", onCancel);
+    grp.addEventListener("pointerleave", onCancel);
+    // Fallback for very old browsers lacking Pointer Events
+    if (!window.PointerEvent) {
+      grp.addEventListener("touchstart", e => { onDown(e.touches[0]); });
+      grp.addEventListener("touchmove", e => { onMove(e.touches[0]); });
+      grp.addEventListener("touchend", e => { onUp(e); });
+      grp.addEventListener("click", e => { /* prevent double */ });
+    }
 
-    grp.style.cursor = "pointer";
-    grp.style.pointerEvents = "all";
-    grp.appendChild(hit);
-    grp.appendChild(circle);
-    if (label) grp.appendChild(label);
-    g.appendChild(grp);
-  });
-}
-
-// ── Stats ─────────────────────────────────────────────────────────────────────
-function updateStats() {
-  const total = Object.values(logs).flat().length;
-  const areas = Object.keys(logs).filter(k => logs[k].length > 0).length;
-  document.getElementById("stat-entries").textContent = total;
-  document.getElementById("stat-areas").textContent = areas;
-  document.getElementById("export-btn-header").style.display = total > 0 ? "block" : "none";
-}
-
-// ── Side toggle ───────────────────────────────────────────────────────────────
-function setSide(s) {
-  side = s;
-  ["front","back"].forEach(x => {
-    document.getElementById("btn-"+x).classList.toggle("active", x===s);
-    const bm = document.getElementById("btn-"+x+"-m");
-    if (bm) bm.classList.toggle("active-blue", x===s);
-  });
-  renderSVG();
-}
-
-// ── Multi-select ──────────────────────────────────────────────────────────────
-function enterMulti(id) {
-  multiSelect = true;
-  selectedIds = [id];
-  document.getElementById("toolbar-normal").style.display = "none";
-  document.getElementById("toolbar-multi").style.display = "block";
-  document.getElementById("legend").style.display = "none";
-  updateMultiUI();
-  renderSVG();
-}
-function toggleMultiId(id) {
-  if (selectedIds.includes(id)) {
-    selectedIds = selectedIds.filter(i => i !== id);
-  } else {
-    selectedIds.push(id);
-  }
-  updateMultiUI();
-  renderSVG();
-}
-function cancelMulti() {
-  multiSelect = false;
-  selectedIds = [];
-  document.getElementById("toolbar-normal").style.display = "flex";
-  document.getElementById("toolbar-multi").style.display = "none";
-  document.getElementById("legend").style.display = "flex";
-  document.getElementById("chips-container").innerHTML = "";
-  renderSVG();
-}
-function updateMultiUI() {
-  const n = selectedIds.length;
-  document.getElementById("multi-count").textContent = n + " area" + (n!==1?"s":"") + " selected";
-  document.getElementById("multi-log-btn").style.display = n > 0 ? "block" : "none";
-
-  // chips
-  const cc = document.getElementById("chips-container");
-  cc.innerHTML = "";
-  selectedIds.forEach(id => {
-    const chip = document.createElement("div");
-    chip.className = "chip";
-    chip.innerHTML = labelForId(id) + '<span class="chip-x" onclick="toggleMultiId(\''+id+'\')">×</span>';
-    cc.appendChild(chip);
-  });
-}
-function goMultiLog() {
-  multiSev = "Mild";
-  document.getElementById("note-multi").value = "";
-  document.getElementById("multi-subtitle").textContent = "Logging for " + selectedIds.length + " area" + (selectedIds.length!==1?"s":"");
-  // chips
-  const mc = document.getElementById("multi-chips");
-  mc.innerHTML = "";
-  selectedIds.forEach(id => {
-    const chip = document.createElement("div");
-    chip.className = "chip";
-    chip.textContent = labelForId(id);
-    mc.appendChild(chip);
-  });
-  buildSevPicker("sev-picker-multi", () => multiSev, v => { multiSev = v; });
-  document.getElementById("save-multi-btn").textContent = "Save to All " + selectedIds.length + " Areas";
-  updateSaveBtn("note-multi","save-multi-btn");
-  document.getElementById("note-multi").oninput = () => updateSaveBtn("note-multi","save-multi-btn");
-  showView("add-multi");
-}
-
-// ── Single entry ──────────────────────────────────────────────────────────────
-function openDetail(p) {
-  selectedPart = p;
-  showDetail();
-}
-function showDetail() {
-  const p = selectedPart;
-  const entries = logs[p.id] || [];
-  document.getElementById("detail-title").textContent = p.label;
-  document.getElementById("detail-count").textContent = entries.length + " entries";
-  const el = document.getElementById("detail-entries");
-  el.innerHTML = "";
-  if (entries.length === 0) {
-    el.innerHTML = '<div style="text-align:center;color:#475569;padding:30px 0;font-size:14px;">No symptoms logged yet.</div>';
-  } else {
-    [...entries].reverse().forEach((e, i) => {
-      const realIdx = entries.length - 1 - i;
-      const card = document.createElement("div");
-      card.className = "entry-card";
-      card.style.borderLeft = "3px solid " + SEV_COLOR[e.severity];
-      card.innerHTML = `
-        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
-          <div>
-            <div style="font-size:11px;color:${SEV_COLOR[e.severity]};font-weight:bold;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;">${e.severity}</div>
-            <div style="font-size:14px;color:#e2e8f0;line-height:1.5;">${e.note}</div>
-            <div style="font-size:11px;color:#475569;margin-top:6px;">${fmt(e.ts)}</div>
-          </div>
-          <button onclick="deleteEntry('${p.id}',${realIdx})" style="background:none;border:none;color:#475569;cursor:pointer;font-size:20px;padding:0 0 0 10px;flex-shrink:0;">×</button>
-        </div>`;
-      el.appendChild(card);
-    });
-  }
-  showView("detail");
-}
-function showAdd() {
-  singleSev = "Mild";
-  document.getElementById("add-title").textContent = "Log Symptom";
-  document.getElementById("add-subtitle").textContent = selectedPart.label;
-  document.getElementById("note-single").value = "";
-  buildSevPicker("sev-picker-single", () => singleSev, v => { singleSev = v; });
-  updateSaveBtn("note-single","save-single-btn");
-  document.getElementById("note-single").oninput = () => updateSaveBtn("note-single","save-single-btn");
-  showView("add");
-}
-
-async function saveEntry() {
-  const note = document.getElementById("note-single").value.trim();
-  if (!note) return;
-  const entry = {note, severity:singleSev, ts:Date.now()};
-  logs[selectedPart.id] = [...(logs[selectedPart.id]||[]), entry];
-  await saveLogs();
-  updateStats();
-  renderSVG();
-  showDetail();
-}
-async function saveMultiEntry() {
-  const note = document.getElementById("note-multi").value.trim();
-  if (!note || !selectedIds.length) return;
-  const entry = {note, severity:multiSev, ts:Date.now()};
-  selectedIds.forEach(id => { logs[id] = [...(logs[id]||[]), entry]; });
-  await saveLogs();
-  updateStats();
-  cancelMulti();
-  showView("map");
-  renderSVG();
-}
-async function deleteEntry(partId, idx) {
-  logs[partId] = (logs[partId]||[]).filter((_,i) => i!==idx);
-  await saveLogs();
-  updateStats();
-  renderSVG();
-  showDetail();
-}
-
-// ── Severity picker ───────────────────────────────────────────────────────────
-function buildSevPicker(containerId, getVal, setVal) {
-  const c = document.getElementById(containerId);
-  c.innerHTML = "";
-  ["Mild","Moderate","Severe"].forEach(s => {
-    const btn = document.createElement("button");
-    btn.className = "sev-btn";
-    btn.textContent = s;
-    btn.style.background = getVal()===s ? SEV_COLOR[s] : "#1e293b";
-    btn.style.color = getVal()===s ? "#fff" : "#64748b";
-    btn.onclick = () => { setVal(s); buildSevPicker(containerId, getVal, setVal); };
-    c.appendChild(btn);
-  });
-}
-function updateSaveBtn(noteId, btnId) {
-  const val = document.getElementById(noteId).value.trim();
-  const btn = document.getElementById(btnId);
-  btn.style.background = val ? "#f97316" : "#334155";
-  btn.style.color = val ? "#fff" : "#64748b";
-}
-
-// ── View switching ────────────────────────────────────────────────────────────
-function showView(name) {
-  document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
-  document.getElementById("view-"+name).classList.add("active");
-  window.scrollTo(0,0);
-}
-function showMap() { showView("map"); renderSVG(); }
-
-// ── Export ────────────────────────────────────────────────────────────────────
-function openExport() {
-  const total = Object.values(logs).flat().length;
-  const areas = Object.keys(logs).filter(k=>logs[k].length>0).length;
-  document.getElementById("export-summary").textContent = total + " entries across " + areas + " areas";
-  document.getElementById("patient-name").value = "";
-  document.getElementById("export-modal").style.display = "flex";
-}
-function closeExport() { document.getElementById("export-modal").style.display = "none"; }
-
-function getAllEntries() {
-  const all = [];
-  Object.entries(logs).forEach(([id, entries]) => {
-    entries.forEach(e => all.push({label:labelForId(id), ...e}));
-  });
-  return all.sort((a,b) => b.ts - a.ts);
-}
-
-function buildReportHTML(patientName) {
-  const all = getAllEntries();
-  const areas = [...new Set(all.map(e=>e.label))];
-  const name = patientName || "";
-  const rows = all.map(e => `<tr>
-    <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-weight:500">${e.label}</td>
-    <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;color:${SEV_COLOR_PRINT[e.severity]};font-weight:bold">${e.severity}</td>
-    <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;white-space:nowrap;color:#6b7280;font-size:13px">${fmt(e.ts)}</td>
-    <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${e.note}</td>
-  </tr>`).join("");
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Symptom Report</title>
-  <style>body{font-family:Georgia,serif;max-width:800px;margin:40px auto;padding:0 24px;color:#111;}
-  h1{font-size:26px;margin-bottom:4px;}.meta{color:#6b7280;font-size:14px;margin-bottom:28px;}
-  .summary{background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:16px 20px;margin-bottom:28px;}
-  .tags{display:flex;flex-wrap:wrap;gap:8px;}.tag{background:#e0f2fe;color:#0369a1;border-radius:20px;padding:3px 12px;font-size:13px;}
-  table{width:100%;border-collapse:collapse;font-size:14px;}th{background:#f3f4f6;padding:10px 12px;text-align:left;font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:#6b7280;}
-  @media print{body{margin:20px;}}</style></head><body>
-  <h1>Symptom Log Report</h1>
-  <div class="meta">${name?"<b>Patient:</b> "+name+" &nbsp;·&nbsp; ":""}<b>Generated:</b> ${fmt(Date.now())} &nbsp;·&nbsp; <b>Total entries:</b> ${all.length}</div>
-  <div class="summary"><h2 style="font-size:15px;margin-bottom:8px;color:#374151;">Affected Areas (${areas.length})</h2>
-  <div class="tags">${areas.map(a=>'<span class="tag">'+a+'</span>').join("")}</div></div>
-  <table><thead><tr><th>Area</th><th>Severity</th><th>Date / Time</th><th>Notes</th></tr></thead><tbody>${rows}</tbody></table>
-  </body></html>`;
-}
-
-function doPrint() {
-  const html = buildReportHTML(document.getElementById("patient-name").value);
-  const w = window.open("","_blank");
-  w.document.write(html); w.document.close(); w.focus();
-  setTimeout(() => w.print(), 400);
-}
-function doDownloadHTML() {
-  const html = buildReportHTML(document.getElementById("patient-name").value);
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([html],{type:"text/html"}));
-  a.download = "symptom-report-"+new Date().toISOString().slice(0,10)+".html";
-  a.click();
-}
-function doDownloadCSV() {
-  const all = getAllEntries();
-  const rows = [["Area","Severity","Date/Time","Notes"]];
-  all.forEach(e => rows.push(['"'+e.label+'"', e.severity, fmt(e.ts), '"'+e.note.replace(/"/g,'""')+'"']));
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(new Blob([rows.map(r=>r.join(",")).join("\n")],{type:"text/csv"}));
-  a.download = "symptom-log-"+new Date().toISOString().slice(0,10)+".csv";
-  a.click();
-}
-
-// ── Init ──────────────────────────────────────────────────────────────────────
-(async () => {
-  try {
-    const data = await dbGet("logs");
-    if (data) logs = data;
-  } catch(e) { console.error(e); }
-  updateStats();
-  setSide("front");
-  renderSVG();
-})();
-</script>
-</body>
-</html>
+    grp.style.curs
