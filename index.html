@@ -34,6 +34,13 @@ input[type=text]{width:100%;background:#0f172a;border:1px solid #334155;border-r
 <body>
 <div id="app">
 
+  <!-- DEBUG PANEL (tap "hide" to dismiss) -->
+  <div id="debug-panel" style="position:fixed;top:0;left:0;right:0;background:#000;color:#0f0;font-family:monospace;font-size:11px;padding:6px 10px;z-index:9999;max-height:90px;overflow-y:auto;border-bottom:1px solid #0f0;">
+    <span style="float:right;color:#f55;cursor:pointer;" onclick="document.getElementById('debug-panel').style.display='none'">[hide]</span>
+    <div id="debug-log">debug ready — tap a body part…</div>
+  </div>
+
+
   <!-- MAP VIEW -->
   <div id="view-map" class="view active">
     <div style="padding:20px 20px 12px;border-bottom:1px solid #1e293b;">
@@ -164,6 +171,15 @@ input[type=text]{width:100%;background:#0f172a;border:1px solid #334155;border-r
 </div>
 
 <script>
+// ── Debug ─────────────────────────────────────────────────────────────────────
+let dbgCount = 0;
+function dbg(msg) {
+  const el = document.getElementById("debug-log");
+  if (!el) return;
+  dbgCount++;
+  el.innerHTML = "["+dbgCount+"] " + msg + "<br>" + el.innerHTML;
+}
+
 // ── Data ─────────────────────────────────────────────────────────────────────
 const FRONT_PARTS = [
   {id:"head",label:"Head",cx:160,cy:42,r:28},
@@ -316,12 +332,14 @@ function renderSVG() {
     let startX = 0, startY = 0, moved = false;
 
     function onDown(e) {
+      dbg("DOWN on "+p.id+" ("+e.pointerType+")");
       longFired = false;
       moved = false;
       startX = e.clientX;
       startY = e.clientY;
       pressTimer = setTimeout(() => {
         longFired = true;
+        dbg("LONG-PRESS "+p.id);
         if (!multiSelect) {
           if (navigator.vibrate) navigator.vibrate(40);
           enterMulti(p.id);
@@ -336,28 +354,4 @@ function renderSVG() {
     }
     function onUp(e) {
       if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
-      if (longFired || moved) return;
-      if (multiSelect) {
-        toggleMultiId(p.id);
-      } else {
-        openDetail(p);
-      }
-    }
-    function onCancel() {
-      if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
-    }
-
-    grp.addEventListener("pointerdown", onDown);
-    grp.addEventListener("pointermove", onMove);
-    grp.addEventListener("pointerup", onUp);
-    grp.addEventListener("pointercancel", onCancel);
-    grp.addEventListener("pointerleave", onCancel);
-    // Fallback for very old browsers lacking Pointer Events
-    if (!window.PointerEvent) {
-      grp.addEventListener("touchstart", e => { onDown(e.touches[0]); });
-      grp.addEventListener("touchmove", e => { onMove(e.touches[0]); });
-      grp.addEventListener("touchend", e => { onUp(e); });
-      grp.addEventListener("click", e => { /* prevent double */ });
-    }
-
-    grp.style.curs
+      if (longFired || moved) { dbg("UP ignore
