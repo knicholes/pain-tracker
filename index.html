@@ -309,37 +309,50 @@ function renderSVG() {
 
     const grp = svgEl("g", {});
 
-    // Long press
+    // Robust press handling: track start time + whether a long-press already fired.
+    let pressStart = 0;
+    let longFired = false;
     let pressTimer = null;
-    function startPress() {
+    let moved = false;
+
+    function onDown(e) {
+      pressStart = Date.now();
+      longFired = false;
+      moved = false;
       pressTimer = setTimeout(() => {
-        pressTimer = null;
+        longFired = true;
         if (!multiSelect) {
           if (navigator.vibrate) navigator.vibrate(40);
           enterMulti(p.id);
         }
       }, 500);
     }
-    function cancelPress() { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } }
-    function handleTap() {
-      if (pressTimer) { // it's a short tap
-        cancelPress();
-        if (multiSelect) {
-          toggleMultiId(p.id);
-        } else {
-          openDetail(p);
-        }
+    function onMove() {
+      moved = true;
+      if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+    }
+    function onUp(e) {
+      if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+      if (longFired || moved) return; // long-press already handled, or it was a drag
+      // short tap
+      if (multiSelect) {
+        toggleMultiId(p.id);
+      } else {
+        openDetail(p);
       }
     }
 
-    grp.addEventListener("touchstart", e => { e.preventDefault(); startPress(); }, {passive:false});
-    grp.addEventListener("touchend", e => { e.preventDefault(); handleTap(); });
-    grp.addEventListener("touchmove", e => { cancelPress(); });
-    grp.addEventListener("mousedown", () => startPress());
-    grp.addEventListener("mouseup", () => handleTap());
-    grp.addEventListener("mouseleave", () => cancelPress());
+    grp.addEventListener("touchstart", e => { e.preventDefault(); onDown(e); }, {passive:false});
+    grp.addEventListener("touchmove", onMove, {passive:true});
+    grp.addEventListener("touchend", e => { e.preventDefault(); onUp(e); }, {passive:false});
+    grp.addEventListener("touchcancel", () => { if (pressTimer) clearTimeout(pressTimer); });
+    // Desktop fallback
+    grp.addEventListener("mousedown", onDown);
+    grp.addEventListener("mouseup", onUp);
+    grp.addEventListener("mouseleave", () => { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } });
 
     grp.style.cursor = "pointer";
+    grp.style.pointerEvents = "all";
     grp.appendChild(hit);
     grp.appendChild(circle);
     if (label) grp.appendChild(label);
