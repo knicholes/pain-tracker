@@ -3,358 +3,612 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+<meta name="mobile-web-app-capable" content="yes"/>
 <meta name="apple-mobile-web-app-capable" content="yes"/>
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent"/>
 <title>Body Tracker</title>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
 <style>
-  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { height: 100%; background: #0f172a; font-family: Georgia, serif; color: #e2e8f0; }
-  #root { max-width: 420px; margin: 0 auto; min-height: 100vh; padding-bottom: 40px; }
-  button { font-family: Georgia, serif; }
-  textarea { font-family: Georgia, serif; }
-  @media print {
-    body { background: #fff; color: #000; }
-    #root { max-width: 100%; }
-    .no-print { display: none !important; }
-    .print-only { display: block !important; }
-  }
+*{box-sizing:border-box;margin:0;padding:0;}
+html,body{min-height:100%;background:#0f172a;font-family:Georgia,serif;color:#e2e8f0;}
+#app{max-width:420px;margin:0 auto;min-height:100vh;padding-bottom:40px;}
+button,textarea,input{font-family:Georgia,serif;}
+.view{display:none;}
+.view.active{display:block;}
+.sev-btn{flex:1;padding:10px 0;border-radius:8px;border:none;cursor:pointer;font-size:13px;font-weight:bold;}
+.export-btn{padding:14px;background:#0f172a;border:1px solid #334155;border-radius:10px;color:#e2e8f0;font-size:14px;font-weight:bold;cursor:pointer;text-align:left;display:flex;align-items:center;gap:12px;width:100%;}
+.chip{background:#0c4a6e;color:#38bdf8;border-radius:20px;padding:4px 10px;font-size:12px;display:inline-flex;align-items:center;gap:6px;margin:3px;}
+.chip-x{cursor:pointer;color:#7dd3fc;font-weight:bold;}
+.entry-card{background:#1e293b;border-radius:10px;padding:12px 14px;margin-bottom:10px;}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.7);display:flex;align-items:flex-end;z-index:100;}
+.modal-box{background:#1e293b;border-radius:16px 16px 0 0;padding:24px 20px 36px;width:100%;max-width:420px;margin:0 auto;}
+.toggle-group{display:flex;background:#1e293b;border-radius:8px;overflow:hidden;border:1px solid #334155;}
+.toggle-btn{padding:7px 16px;border:none;cursor:pointer;font-size:13px;font-weight:bold;font-family:Georgia,serif;background:transparent;color:#64748b;}
+.toggle-btn.active{background:#f97316;color:#fff;}
+.toggle-btn.active-blue{background:#0369a1;color:#fff;}
+.back-btn{background:none;border:none;color:#64748b;font-size:13px;cursor:pointer;padding:0 0 12px 0;display:block;}
+.save-btn{width:100%;padding:14px;border:none;border-radius:10px;font-size:15px;font-weight:bold;cursor:pointer;font-family:Georgia,serif;}
+textarea{width:100%;background:#1e293b;border:1px solid #334155;border-radius:10px;padding:12px;color:#e2e8f0;font-size:14px;resize:none;outline:none;}
+input[type=text]{width:100%;background:#0f172a;border:1px solid #334155;border-radius:10px;padding:12px;color:#e2e8f0;font-size:14px;outline:none;}
+.label-sm{font-size:11px;color:#94a3b8;margin-bottom:8px;letter-spacing:1px;text-transform:uppercase;display:block;}
 </style>
 </head>
 <body>
-<div id="root"></div>
-<script type="text/babel">
+<div id="app">
 
-// ─── IndexedDB ───────────────────────────────────────────────────────────────
-const DB_NAME = "BodyTracker", DB_VERSION = 1, STORE = "logs";
+  <!-- MAP VIEW -->
+  <div id="view-map" class="view active">
+    <div style="padding:20px 20px 12px;border-bottom:1px solid #1e293b;">
+      <div style="font-size:11px;letter-spacing:3px;color:#64748b;text-transform:uppercase;margin-bottom:4px;">Symptom Log</div>
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <div style="font-size:22px;font-weight:bold;color:#f1f5f9;">Body Tracker</div>
+        <button id="export-btn-header" onclick="openExport()" style="display:none;background:#1e293b;border:1px solid #334155;border-radius:8px;padding:7px 14px;color:#94a3b8;font-size:13px;cursor:pointer;">↑ Export</button>
+      </div>
+      <div style="margin-top:8px;display:flex;gap:16px;">
+        <span style="font-size:13px;color:#94a3b8;"><b id="stat-areas" style="color:#f97316;">0</b> areas logged</span>
+        <span style="font-size:13px;color:#94a3b8;"><b id="stat-entries" style="color:#f97316;">0</b> total entries</span>
+      </div>
+    </div>
+
+    <!-- Normal toolbar -->
+    <div id="toolbar-normal" style="padding:10px 20px 4px;display:flex;gap:10px;align-items:center;">
+      <div style="font-size:12px;color:#64748b;flex:1;">Tap · <b style="color:#475569;">Long-press</b> for multi</div>
+      <div class="toggle-group">
+        <button class="toggle-btn active" id="btn-front" onclick="setSide('front')">Front</button>
+        <button class="toggle-btn" id="btn-back" onclick="setSide('back')">Back</button>
+      </div>
+    </div>
+
+    <!-- Multi-select toolbar -->
+    <div id="toolbar-multi" style="display:none;background:#0c4a6e;padding:10px 20px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;">
+        <div>
+          <div style="font-size:13px;font-weight:bold;color:#38bdf8;">Multi-select</div>
+          <div id="multi-count" style="font-size:12px;color:#7dd3fc;">0 areas selected</div>
+        </div>
+        <div style="display:flex;gap:8px;">
+          <button onclick="cancelMulti()" style="padding:6px 12px;background:#1e3a5f;border:none;border-radius:8px;color:#94a3b8;font-size:13px;cursor:pointer;font-family:Georgia,serif;">Cancel</button>
+          <button id="multi-log-btn" onclick="goMultiLog()" style="display:none;padding:6px 12px;background:#f97316;border:none;border-radius:8px;color:#fff;font-size:13px;font-weight:bold;cursor:pointer;font-family:Georgia,serif;">Log →</button>
+        </div>
+      </div>
+      <div style="margin-top:8px;display:flex;justify-content:flex-end;">
+        <div class="toggle-group">
+          <button class="toggle-btn" id="btn-front-m" onclick="setSide('front')">Front</button>
+          <button class="toggle-btn" id="btn-back-m" onclick="setSide('back')">Back</button>
+        </div>
+      </div>
+    </div>
+
+    <svg id="body-svg" viewBox="0 0 320 435" style="width:100%;display:block;padding:0 10px;touch-action:none;user-select:none;">
+      <!-- Body outline -->
+      <ellipse cx="160" cy="42" rx="26" ry="28" fill="#1e293b" stroke="#334155" stroke-width="1.5"/>
+      <rect x="138" y="68" width="44" height="20" rx="8" fill="#1e293b" stroke="#334155" stroke-width="1.5"/>
+      <path d="M138 88 Q110 95 95 108 L78 175 Q75 195 70 210 L62 240 Q58 255 55 270" fill="#1e293b" stroke="#334155" stroke-width="1.5"/>
+      <path d="M182 88 Q210 95 225 108 L242 175 Q245 195 250 210 L258 240 Q262 255 265 270" fill="#1e293b" stroke="#334155" stroke-width="1.5"/>
+      <rect x="130" y="88" width="60" height="145" rx="14" fill="#1e293b" stroke="#334155" stroke-width="1.5"/>
+      <path d="M135 228 L112 250 Q108 295 108 315 Q108 340 110 365 L110 406 Q112 418 118 420 L126 420 Q132 417 130 410 L128 385" fill="#1e293b" stroke="#334155" stroke-width="1.5"/>
+      <path d="M185 228 L208 250 Q212 295 212 315 Q212 340 210 365 L210 406 Q208 418 202 420 L194 420 Q188 417 190 410 L192 385" fill="#1e293b" stroke="#334155" stroke-width="1.5"/>
+      <!-- Part circles injected by JS -->
+      <g id="parts-group"></g>
+    </svg>
+
+    <div id="chips-container" style="padding:0 20px;display:flex;flex-wrap:wrap;"></div>
+
+    <!-- Legend -->
+    <div id="legend" style="padding:4px 20px 0;display:flex;gap:14px;flex-wrap:wrap;">
+      <div style="display:flex;align-items:center;gap:5px;font-size:12px;color:#94a3b8;"><div style="width:10px;height:10px;border-radius:50%;background:#f59e0b;"></div>Mild</div>
+      <div style="display:flex;align-items:center;gap:5px;font-size:12px;color:#94a3b8;"><div style="width:10px;height:10px;border-radius:50%;background:#f97316;"></div>Moderate</div>
+      <div style="display:flex;align-items:center;gap:5px;font-size:12px;color:#94a3b8;"><div style="width:10px;height:10px;border-radius:50%;background:#ef4444;"></div>Severe</div>
+      <div style="display:flex;align-items:center;gap:5px;font-size:12px;color:#94a3b8;"><div style="width:10px;height:10px;border-radius:50%;background:#c7d2e8;opacity:0.35;"></div>None</div>
+    </div>
+  </div>
+
+  <!-- DETAIL VIEW -->
+  <div id="view-detail" class="view" style="padding:16px 20px;">
+    <button class="back-btn" onclick="showMap()">← Back to map</button>
+    <div id="detail-title" style="font-size:20px;font-weight:bold;margin-bottom:4px;"></div>
+    <div id="detail-count" style="font-size:13px;color:#64748b;margin-bottom:16px;"></div>
+    <button onclick="showAdd()" style="width:100%;padding:12px;background:#f97316;border:none;border-radius:10px;color:#fff;font-size:15px;font-weight:bold;cursor:pointer;margin-bottom:20px;font-family:Georgia,serif;">+ Log New Symptom</button>
+    <div id="detail-entries"></div>
+  </div>
+
+  <!-- ADD SINGLE VIEW -->
+  <div id="view-add" class="view" style="padding:16px 20px;">
+    <button class="back-btn" onclick="showDetail()">← Back</button>
+    <div id="add-title" style="font-size:20px;font-weight:bold;margin-bottom:2px;"></div>
+    <div id="add-subtitle" style="font-size:14px;color:#64748b;margin-bottom:20px;"></div>
+    <span class="label-sm">Severity</span>
+    <div style="display:flex;gap:10px;margin-bottom:16px;" id="sev-picker-single"></div>
+    <span class="label-sm">Description</span>
+    <textarea id="note-single" rows="4" placeholder="Describe the pain, ache, or symptom…" style="margin-bottom:20px;"></textarea>
+    <button class="save-btn" id="save-single-btn" onclick="saveEntry()" style="background:#334155;color:#64748b;">Save Entry</button>
+  </div>
+
+  <!-- ADD MULTI VIEW -->
+  <div id="view-add-multi" class="view" style="padding:16px 20px;">
+    <button class="back-btn" onclick="showMap()">← Back</button>
+    <div style="font-size:20px;font-weight:bold;margin-bottom:2px;">Log Symptom</div>
+    <div id="multi-subtitle" style="font-size:13px;color:#64748b;margin-bottom:12px;"></div>
+    <div id="multi-chips" style="display:flex;flex-wrap:wrap;margin-bottom:16px;"></div>
+    <span class="label-sm">Severity</span>
+    <div style="display:flex;gap:10px;margin-bottom:16px;" id="sev-picker-multi"></div>
+    <span class="label-sm">Description</span>
+    <textarea id="note-multi" rows="4" placeholder="Describe the pain, ache, or symptom…" style="margin-bottom:20px;"></textarea>
+    <button class="save-btn" id="save-multi-btn" onclick="saveMultiEntry()" style="background:#334155;color:#64748b;">Save to All Areas</button>
+  </div>
+
+</div>
+
+<!-- EXPORT MODAL -->
+<div id="export-modal" class="modal-overlay" style="display:none;" onclick="closeExport()">
+  <div class="modal-box" onclick="event.stopPropagation()">
+    <div style="width:36px;height:4px;background:#334155;border-radius:2px;margin:0 auto 20px;"></div>
+    <div style="font-size:18px;font-weight:bold;margin-bottom:4px;">Export Symptom Report</div>
+    <div id="export-summary" style="font-size:13px;color:#64748b;margin-bottom:20px;"></div>
+    <span class="label-sm">Patient name (optional)</span>
+    <input type="text" id="patient-name" placeholder="e.g. John Smith" style="margin-bottom:20px;"/>
+    <div style="display:flex;flex-direction:column;gap:10px;">
+      <button class="export-btn" onclick="doPrint()">
+        <span style="font-size:22px;">🖨️</span>
+        <div><div>Print / Save as PDF</div><div style="font-size:12px;color:#64748b;font-weight:normal;">Opens print dialog — save as PDF to share</div></div>
+      </button>
+      <button class="export-btn" onclick="doDownloadHTML()">
+        <span style="font-size:22px;">📄</span>
+        <div><div>Download as HTML</div><div style="font-size:12px;color:#64748b;font-weight:normal;">Formatted report — open in any browser</div></div>
+      </button>
+      <button class="export-btn" onclick="doDownloadCSV()">
+        <span style="font-size:22px;">📊</span>
+        <div><div>Download as CSV</div><div style="font-size:12px;color:#64748b;font-weight:normal;">Spreadsheet — for Excel or patient portals</div></div>
+      </button>
+    </div>
+    <button onclick="closeExport()" style="margin-top:16px;width:100%;padding:12px;background:transparent;border:none;color:#475569;font-size:14px;cursor:pointer;font-family:Georgia,serif;">Cancel</button>
+  </div>
+</div>
+
+<script>
+// ── Data ─────────────────────────────────────────────────────────────────────
+const FRONT_PARTS = [
+  {id:"head",label:"Head",cx:160,cy:42,r:28},
+  {id:"neck",label:"Neck",cx:160,cy:82,r:14},
+  {id:"left_shoulder",label:"Left Shoulder",cx:110,cy:110,r:18},
+  {id:"right_shoulder",label:"Right Shoulder",cx:210,cy:110,r:18},
+  {id:"chest",label:"Chest",cx:160,cy:135,r:22},
+  {id:"left_upper_arm",label:"Left Upper Arm",cx:82,cy:148,r:16},
+  {id:"right_upper_arm",label:"Right Upper Arm",cx:238,cy:148,r:16},
+  {id:"abdomen",label:"Abdomen",cx:160,cy:178,r:22},
+  {id:"left_elbow",label:"Left Elbow",cx:70,cy:190,r:13},
+  {id:"right_elbow",label:"Right Elbow",cx:250,cy:190,r:13},
+  {id:"left_forearm",label:"Left Forearm",cx:62,cy:225,r:13},
+  {id:"right_forearm",label:"Right Forearm",cx:258,cy:225,r:13},
+  {id:"groin",label:"Groin / Pelvis",cx:160,cy:218,r:18},
+  {id:"left_hand",label:"Left Hand",cx:55,cy:260,r:14},
+  {id:"right_hand",label:"Right Hand",cx:265,cy:260,r:14},
+  {id:"left_thigh",label:"Left Thigh",cx:128,cy:268,r:20},
+  {id:"right_thigh",label:"Right Thigh",cx:192,cy:268,r:20},
+  {id:"left_knee",label:"Left Knee",cx:125,cy:318,r:16},
+  {id:"right_knee",label:"Right Knee",cx:195,cy:318,r:16},
+  {id:"left_shin",label:"Left Shin",cx:120,cy:358,r:14},
+  {id:"right_shin",label:"Right Shin",cx:200,cy:358,r:14},
+  {id:"left_foot",label:"Left Foot",cx:115,cy:400,r:15},
+  {id:"right_foot",label:"Right Foot",cx:205,cy:400,r:15},
+];
+const BACK_PARTS = [
+  {id:"back_head",label:"Back of Head",cx:160,cy:42,r:28},
+  {id:"back_neck",label:"Back of Neck",cx:160,cy:82,r:14},
+  {id:"left_trap",label:"Left Trap / Shoulder",cx:110,cy:110,r:18},
+  {id:"right_trap",label:"Right Trap / Shoulder",cx:210,cy:110,r:18},
+  {id:"left_upper_arm_back",label:"Left Upper Arm (back)",cx:82,cy:148,r:16},
+  {id:"right_upper_arm_back",label:"Right Upper Arm (back)",cx:238,cy:148,r:16},
+  {id:"upper_back",label:"Upper Back",cx:160,cy:135,r:22},
+  {id:"mid_back",label:"Mid Back",cx:160,cy:178,r:22},
+  {id:"left_elbow_back",label:"Left Elbow (back)",cx:70,cy:190,r:13},
+  {id:"right_elbow_back",label:"Right Elbow (back)",cx:250,cy:190,r:13},
+  {id:"lower_back",label:"Lower Back",cx:160,cy:218,r:18},
+  {id:"left_forearm_back",label:"Left Forearm (back)",cx:62,cy:225,r:13},
+  {id:"right_forearm_back",label:"Right Forearm (back)",cx:258,cy:225,r:13},
+  {id:"left_hand_back",label:"Left Hand (back)",cx:55,cy:260,r:14},
+  {id:"right_hand_back",label:"Right Hand (back)",cx:265,cy:260,r:14},
+  {id:"left_glute",label:"Left Glute",cx:135,cy:245,r:18},
+  {id:"right_glute",label:"Right Glute",cx:185,cy:245,r:18},
+  {id:"left_hamstring",label:"Left Hamstring",cx:128,cy:290,r:20},
+  {id:"right_hamstring",label:"Right Hamstring",cx:192,cy:290,r:20},
+  {id:"left_knee_back",label:"Left Knee (back)",cx:125,cy:335,r:16},
+  {id:"right_knee_back",label:"Right Knee (back)",cx:195,cy:335,r:16},
+  {id:"left_calf",label:"Left Calf",cx:120,cy:370,r:14},
+  {id:"right_calf",label:"Right Calf",cx:200,cy:370,r:14},
+  {id:"left_heel",label:"Left Heel / Foot",cx:115,cy:406,r:15},
+  {id:"right_heel",label:"Right Heel / Foot",cx:205,cy:406,r:15},
+];
+const ALL_PARTS = [...FRONT_PARTS, ...BACK_PARTS];
+const SEV_COLOR = {Mild:"#f59e0b",Moderate:"#f97316",Severe:"#ef4444"};
+const SEV_COLOR_PRINT = {Mild:"#b45309",Moderate:"#c2410c",Severe:"#b91c1c"};
+
+// ── State ─────────────────────────────────────────────────────────────────────
+let logs = {};
+let side = 'front';
+let multiSelect = false;
+let selectedIds = [];
+let selectedPart = null;
+let singleSev = 'Mild';
+let multiSev = 'Mild';
+
+// ── IndexedDB ─────────────────────────────────────────────────────────────────
 function openDB() {
-  return new Promise((res, rej) => {
-    const r = indexedDB.open(DB_NAME, DB_VERSION);
-    r.onupgradeneeded = e => e.target.result.createObjectStore(STORE);
+  return new Promise((res,rej) => {
+    const r = indexedDB.open("BodyTracker", 1);
+    r.onupgradeneeded = e => e.target.result.createObjectStore("logs");
     r.onsuccess = e => res(e.target.result);
     r.onerror = e => rej(e.target.error);
   });
 }
 async function dbGet(key) {
   const db = await openDB();
-  return new Promise((res, rej) => { const r = db.transaction(STORE,"readonly").objectStore(STORE).get(key); r.onsuccess = e => res(e.target.result); r.onerror = e => rej(e.target.error); });
+  return new Promise((res,rej) => {
+    const r = db.transaction("logs","readonly").objectStore("logs").get(key);
+    r.onsuccess = e => res(e.target.result);
+    r.onerror = e => rej(e.target.error);
+  });
 }
 async function dbSet(key, value) {
   const db = await openDB();
-  return new Promise((res, rej) => { const r = db.transaction(STORE,"readwrite").objectStore(STORE).put(value, key); r.onsuccess = () => res(); r.onerror = e => rej(e.target.error); });
+  return new Promise((res,rej) => {
+    const r = db.transaction("logs","readwrite").objectStore("logs").put(value, key);
+    r.onsuccess = () => res();
+    r.onerror = e => rej(e.target.error);
+  });
 }
 
-// ─── Data ────────────────────────────────────────────────────────────────────
-const FRONT_PARTS = [
-  { id:"head", label:"Head", cx:160, cy:42, r:28 },
-  { id:"neck", label:"Neck", cx:160, cy:82, r:14 },
-  { id:"left_shoulder", label:"Left Shoulder", cx:110, cy:110, r:18 },
-  { id:"right_shoulder", label:"Right Shoulder", cx:210, cy:110, r:18 },
-  { id:"chest", label:"Chest", cx:160, cy:135, r:22 },
-  { id:"left_upper_arm", label:"Left Upper Arm", cx:82, cy:148, r:16 },
-  { id:"right_upper_arm", label:"Right Upper Arm", cx:238, cy:148, r:16 },
-  { id:"abdomen", label:"Abdomen", cx:160, cy:178, r:22 },
-  { id:"left_elbow", label:"Left Elbow", cx:70, cy:190, r:13 },
-  { id:"right_elbow", label:"Right Elbow", cx:250, cy:190, r:13 },
-  { id:"left_forearm", label:"Left Forearm", cx:62, cy:225, r:13 },
-  { id:"right_forearm", label:"Right Forearm", cx:258, cy:225, r:13 },
-  { id:"groin", label:"Groin / Pelvis", cx:160, cy:218, r:18 },
-  { id:"left_hand", label:"Left Hand", cx:55, cy:260, r:14 },
-  { id:"right_hand", label:"Right Hand", cx:265, cy:260, r:14 },
-  { id:"left_thigh", label:"Left Thigh", cx:128, cy:268, r:20 },
-  { id:"right_thigh", label:"Right Thigh", cx:192, cy:268, r:20 },
-  { id:"left_knee", label:"Left Knee", cx:125, cy:318, r:16 },
-  { id:"right_knee", label:"Right Knee", cx:195, cy:318, r:16 },
-  { id:"left_shin", label:"Left Shin", cx:120, cy:358, r:14 },
-  { id:"right_shin", label:"Right Shin", cx:200, cy:358, r:14 },
-  { id:"left_foot", label:"Left Foot", cx:115, cy:400, r:15 },
-  { id:"right_foot", label:"Right Foot", cx:205, cy:400, r:15 },
-];
-const BACK_PARTS = [
-  { id:"back_head", label:"Back of Head", cx:160, cy:42, r:28 },
-  { id:"back_neck", label:"Back of Neck", cx:160, cy:82, r:14 },
-  { id:"left_trap", label:"Left Trap / Shoulder", cx:110, cy:110, r:18 },
-  { id:"right_trap", label:"Right Trap / Shoulder", cx:210, cy:110, r:18 },
-  { id:"left_upper_arm_back", label:"Left Upper Arm (back)", cx:82, cy:148, r:16 },
-  { id:"right_upper_arm_back", label:"Right Upper Arm (back)", cx:238, cy:148, r:16 },
-  { id:"upper_back", label:"Upper Back", cx:160, cy:135, r:22 },
-  { id:"mid_back", label:"Mid Back", cx:160, cy:178, r:22 },
-  { id:"left_elbow_back", label:"Left Elbow (back)", cx:70, cy:190, r:13 },
-  { id:"right_elbow_back", label:"Right Elbow (back)", cx:250, cy:190, r:13 },
-  { id:"lower_back", label:"Lower Back", cx:160, cy:218, r:18 },
-  { id:"left_forearm_back", label:"Left Forearm (back)", cx:62, cy:225, r:13 },
-  { id:"right_forearm_back", label:"Right Forearm (back)", cx:258, cy:225, r:13 },
-  { id:"left_hand_back", label:"Left Hand (back)", cx:55, cy:260, r:14 },
-  { id:"right_hand_back", label:"Right Hand (back)", cx:265, cy:260, r:14 },
-  { id:"left_glute", label:"Left Glute", cx:135, cy:245, r:18 },
-  { id:"right_glute", label:"Right Glute", cx:185, cy:245, r:18 },
-  { id:"left_hamstring", label:"Left Hamstring", cx:128, cy:290, r:20 },
-  { id:"right_hamstring", label:"Right Hamstring", cx:192, cy:290, r:20 },
-  { id:"left_knee_back", label:"Left Knee (back)", cx:125, cy:335, r:16 },
-  { id:"right_knee_back", label:"Right Knee (back)", cx:195, cy:335, r:16 },
-  { id:"left_calf", label:"Left Calf", cx:120, cy:370, r:14 },
-  { id:"right_calf", label:"Right Calf", cx:200, cy:370, r:14 },
-  { id:"left_heel", label:"Left Heel / Foot", cx:115, cy:406, r:15 },
-  { id:"right_heel", label:"Right Heel / Foot", cx:205, cy:406, r:15 },
-];
-const ALL_PARTS = [...FRONT_PARTS, ...BACK_PARTS];
-const SEVERITY = ["Mild","Moderate","Severe"];
-const SEV_COLOR = { Mild:"#f59e0b", Moderate:"#f97316", Severe:"#ef4444" };
-const SEV_COLOR_PRINT = { Mild:"#b45309", Moderate:"#c2410c", Severe:"#b91c1c" };
-
-function fmt(ts) { return new Date(ts).toLocaleString([],{month:"short",day:"numeric",year:"numeric",hour:"2-digit",minute:"2-digit"}); }
-function labelForId(id) { return ALL_PARTS.find(p=>p.id===id)?.label || id; }
-
-// ─── Export helpers ──────────────────────────────────────────────────────────
-function buildCSV(logs) {
-  const rows = [["Area","Severity","Date/Time","Notes"]];
-  const allEntries = [];
-  for (const [id, entries] of Object.entries(logs)) {
-    for (const e of entries) allEntries.push({ label: labelForId(id), ...e });
-  }
-  allEntries.sort((a,b) => b.ts - a.ts);
-  for (const e of allEntries) {
-    rows.push([`"${e.label}"`, e.severity, fmt(e.ts), `"${e.note.replace(/"/g,'""')}"`]);
-  }
-  return rows.map(r => r.join(",")).join("\n");
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function fmt(ts) {
+  return new Date(ts).toLocaleString([],{month:"short",day:"numeric",year:"numeric",hour:"2-digit",minute:"2-digit"});
+}
+function labelForId(id) {
+  const p = ALL_PARTS.find(p => p.id === id);
+  return p ? p.label : id;
+}
+async function saveLogs() {
+  try { await dbSet("logs", logs); } catch(e) { console.error(e); }
+}
+function svgEl(tag, attrs) {
+  const el = document.createElementNS("http://www.w3.org/2000/svg", tag);
+  for (const [k,v] of Object.entries(attrs)) el.setAttribute(k, v);
+  return el;
 }
 
-function downloadCSV(logs) {
-  const csv = buildCSV(logs);
-  const blob = new Blob([csv], { type:"text/csv" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url; a.download = `symptom-log-${new Date().toISOString().slice(0,10)}.csv`;
-  a.click(); URL.revokeObjectURL(url);
+// ── SVG Rendering ─────────────────────────────────────────────────────────────
+function renderSVG() {
+  const g = document.getElementById("parts-group");
+  g.innerHTML = "";
+  const parts = side === "front" ? FRONT_PARTS : BACK_PARTS;
+
+  parts.forEach(p => {
+    const hasLog = logs[p.id] && logs[p.id].length > 0;
+    const isSelected = multiSelect && selectedIds.includes(p.id);
+
+    let fill, opacity, stroke, strokeWidth;
+    if (isSelected) {
+      fill = "#38bdf8"; opacity = "0.95"; stroke = "#7dd3fc"; strokeWidth = "3";
+    } else if (hasLog) {
+      const last = logs[p.id][logs[p.id].length - 1];
+      fill = SEV_COLOR[last.severity]; opacity = "0.85"; stroke = fill; strokeWidth = "2";
+    } else {
+      fill = "#c7d2e8"; opacity = "0.32"; stroke = "#475569"; strokeWidth = "1";
+    }
+
+    // hit area
+    const hit = svgEl("circle", {cx:p.cx, cy:p.cy, r:p.r+10, fill:"transparent"});
+    // visible circle
+    const circle = svgEl("circle", {cx:p.cx, cy:p.cy, r:p.r, fill, opacity, stroke, "stroke-width":strokeWidth});
+    // label
+    let label = null;
+    if (isSelected) {
+      label = svgEl("text", {x:p.cx, y:p.cy, "text-anchor":"middle", "dominant-baseline":"middle", "font-size":"12", fill:"#0f172a", "font-weight":"bold"});
+      label.textContent = "✓";
+    } else if (hasLog) {
+      label = svgEl("text", {x:p.cx, y:p.cy, "text-anchor":"middle", "dominant-baseline":"middle", "font-size":"11", fill:"#fff", "font-weight":"bold"});
+      label.textContent = logs[p.id].length;
+    }
+
+    const grp = svgEl("g", {});
+
+    // Long press
+    let pressTimer = null;
+    function startPress() {
+      pressTimer = setTimeout(() => {
+        pressTimer = null;
+        if (!multiSelect) {
+          if (navigator.vibrate) navigator.vibrate(40);
+          enterMulti(p.id);
+        }
+      }, 500);
+    }
+    function cancelPress() { if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; } }
+    function handleTap() {
+      if (pressTimer) { // it's a short tap
+        cancelPress();
+        if (multiSelect) {
+          toggleMultiId(p.id);
+        } else {
+          openDetail(p);
+        }
+      }
+    }
+
+    grp.addEventListener("touchstart", e => { e.preventDefault(); startPress(); }, {passive:false});
+    grp.addEventListener("touchend", e => { e.preventDefault(); handleTap(); });
+    grp.addEventListener("touchmove", e => { cancelPress(); });
+    grp.addEventListener("mousedown", () => startPress());
+    grp.addEventListener("mouseup", () => handleTap());
+    grp.addEventListener("mouseleave", () => cancelPress());
+
+    grp.style.cursor = "pointer";
+    grp.appendChild(hit);
+    grp.appendChild(circle);
+    if (label) grp.appendChild(label);
+    g.appendChild(grp);
+  });
 }
 
-function buildSummaryHTML(logs, patientName) {
-  const allEntries = [];
-  for (const [id, entries] of Object.entries(logs)) {
-    for (const e of entries) allEntries.push({ label: labelForId(id), ...e });
+// ── Stats ─────────────────────────────────────────────────────────────────────
+function updateStats() {
+  const total = Object.values(logs).flat().length;
+  const areas = Object.keys(logs).filter(k => logs[k].length > 0).length;
+  document.getElementById("stat-entries").textContent = total;
+  document.getElementById("stat-areas").textContent = areas;
+  document.getElementById("export-btn-header").style.display = total > 0 ? "block" : "none";
+}
+
+// ── Side toggle ───────────────────────────────────────────────────────────────
+function setSide(s) {
+  side = s;
+  ["front","back"].forEach(x => {
+    document.getElementById("btn-"+x).classList.toggle("active", x===s);
+    const bm = document.getElementById("btn-"+x+"-m");
+    if (bm) bm.classList.toggle("active-blue", x===s);
+  });
+  renderSVG();
+}
+
+// ── Multi-select ──────────────────────────────────────────────────────────────
+function enterMulti(id) {
+  multiSelect = true;
+  selectedIds = [id];
+  document.getElementById("toolbar-normal").style.display = "none";
+  document.getElementById("toolbar-multi").style.display = "block";
+  document.getElementById("legend").style.display = "none";
+  updateMultiUI();
+  renderSVG();
+}
+function toggleMultiId(id) {
+  if (selectedIds.includes(id)) {
+    selectedIds = selectedIds.filter(i => i !== id);
+  } else {
+    selectedIds.push(id);
   }
-  allEntries.sort((a,b) => b.ts - a.ts);
-  const affectedAreas = [...new Set(allEntries.map(e => e.label))];
+  updateMultiUI();
+  renderSVG();
+}
+function cancelMulti() {
+  multiSelect = false;
+  selectedIds = [];
+  document.getElementById("toolbar-normal").style.display = "flex";
+  document.getElementById("toolbar-multi").style.display = "none";
+  document.getElementById("legend").style.display = "flex";
+  document.getElementById("chips-container").innerHTML = "";
+  renderSVG();
+}
+function updateMultiUI() {
+  const n = selectedIds.length;
+  document.getElementById("multi-count").textContent = n + " area" + (n!==1?"s":"") + " selected";
+  document.getElementById("multi-log-btn").style.display = n > 0 ? "block" : "none";
 
-  const rows = allEntries.map(e => `
-    <tr>
-      <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-weight:500">${e.label}</td>
-      <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;color:${SEV_COLOR_PRINT[e.severity]};font-weight:bold">${e.severity}</td>
-      <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;white-space:nowrap;color:#6b7280;font-size:13px">${fmt(e.ts)}</td>
-      <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${e.note}</td>
-    </tr>`).join("");
+  // chips
+  const cc = document.getElementById("chips-container");
+  cc.innerHTML = "";
+  selectedIds.forEach(id => {
+    const chip = document.createElement("div");
+    chip.className = "chip";
+    chip.innerHTML = labelForId(id) + '<span class="chip-x" onclick="toggleMultiId(\''+id+'\')">×</span>';
+    cc.appendChild(chip);
+  });
+}
+function goMultiLog() {
+  multiSev = "Mild";
+  document.getElementById("note-multi").value = "";
+  document.getElementById("multi-subtitle").textContent = "Logging for " + selectedIds.length + " area" + (selectedIds.length!==1?"s":"");
+  // chips
+  const mc = document.getElementById("multi-chips");
+  mc.innerHTML = "";
+  selectedIds.forEach(id => {
+    const chip = document.createElement("div");
+    chip.className = "chip";
+    chip.textContent = labelForId(id);
+    mc.appendChild(chip);
+  });
+  buildSevPicker("sev-picker-multi", () => multiSev, v => { multiSev = v; });
+  document.getElementById("save-multi-btn").textContent = "Save to All " + selectedIds.length + " Areas";
+  updateSaveBtn("note-multi","save-multi-btn");
+  document.getElementById("note-multi").oninput = () => updateSaveBtn("note-multi","save-multi-btn");
+  showView("add-multi");
+}
 
-  return `<!DOCTYPE html><html><head><meta charset="UTF-8"/>
-  <title>Symptom Report</title>
-  <style>
-    body { font-family: Georgia, serif; max-width: 800px; margin: 40px auto; padding: 0 24px; color: #111; }
-    h1 { font-size: 26px; margin-bottom: 4px; }
-    .meta { color: #6b7280; font-size: 14px; margin-bottom: 28px; }
-    .summary { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 16px 20px; margin-bottom: 28px; }
-    .summary h2 { font-size: 15px; margin-bottom: 8px; color: #374151; }
-    .tags { display: flex; flex-wrap: wrap; gap: 8px; }
-    .tag { background: #e0f2fe; color: #0369a1; border-radius: 20px; padding: 3px 12px; font-size: 13px; }
-    table { width: 100%; border-collapse: collapse; font-size: 14px; }
-    th { background: #f3f4f6; padding: 10px 12px; text-align: left; font-size: 12px; letter-spacing: 0.05em; text-transform: uppercase; color: #6b7280; }
-    @media print { body { margin: 20px; } }
-  </style></head><body>
+// ── Single entry ──────────────────────────────────────────────────────────────
+function openDetail(p) {
+  selectedPart = p;
+  showDetail();
+}
+function showDetail() {
+  const p = selectedPart;
+  const entries = logs[p.id] || [];
+  document.getElementById("detail-title").textContent = p.label;
+  document.getElementById("detail-count").textContent = entries.length + " entries";
+  const el = document.getElementById("detail-entries");
+  el.innerHTML = "";
+  if (entries.length === 0) {
+    el.innerHTML = '<div style="text-align:center;color:#475569;padding:30px 0;font-size:14px;">No symptoms logged yet.</div>';
+  } else {
+    [...entries].reverse().forEach((e, i) => {
+      const realIdx = entries.length - 1 - i;
+      const card = document.createElement("div");
+      card.className = "entry-card";
+      card.style.borderLeft = "3px solid " + SEV_COLOR[e.severity];
+      card.innerHTML = `
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;">
+          <div>
+            <div style="font-size:11px;color:${SEV_COLOR[e.severity]};font-weight:bold;letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;">${e.severity}</div>
+            <div style="font-size:14px;color:#e2e8f0;line-height:1.5;">${e.note}</div>
+            <div style="font-size:11px;color:#475569;margin-top:6px;">${fmt(e.ts)}</div>
+          </div>
+          <button onclick="deleteEntry('${p.id}',${realIdx})" style="background:none;border:none;color:#475569;cursor:pointer;font-size:20px;padding:0 0 0 10px;flex-shrink:0;">×</button>
+        </div>`;
+      el.appendChild(card);
+    });
+  }
+  showView("detail");
+}
+function showAdd() {
+  singleSev = "Mild";
+  document.getElementById("add-title").textContent = "Log Symptom";
+  document.getElementById("add-subtitle").textContent = selectedPart.label;
+  document.getElementById("note-single").value = "";
+  buildSevPicker("sev-picker-single", () => singleSev, v => { singleSev = v; });
+  updateSaveBtn("note-single","save-single-btn");
+  document.getElementById("note-single").oninput = () => updateSaveBtn("note-single","save-single-btn");
+  showView("add");
+}
+
+async function saveEntry() {
+  const note = document.getElementById("note-single").value.trim();
+  if (!note) return;
+  const entry = {note, severity:singleSev, ts:Date.now()};
+  logs[selectedPart.id] = [...(logs[selectedPart.id]||[]), entry];
+  await saveLogs();
+  updateStats();
+  renderSVG();
+  showDetail();
+}
+async function saveMultiEntry() {
+  const note = document.getElementById("note-multi").value.trim();
+  if (!note || !selectedIds.length) return;
+  const entry = {note, severity:multiSev, ts:Date.now()};
+  selectedIds.forEach(id => { logs[id] = [...(logs[id]||[]), entry]; });
+  await saveLogs();
+  updateStats();
+  cancelMulti();
+  showView("map");
+  renderSVG();
+}
+async function deleteEntry(partId, idx) {
+  logs[partId] = (logs[partId]||[]).filter((_,i) => i!==idx);
+  await saveLogs();
+  updateStats();
+  renderSVG();
+  showDetail();
+}
+
+// ── Severity picker ───────────────────────────────────────────────────────────
+function buildSevPicker(containerId, getVal, setVal) {
+  const c = document.getElementById(containerId);
+  c.innerHTML = "";
+  ["Mild","Moderate","Severe"].forEach(s => {
+    const btn = document.createElement("button");
+    btn.className = "sev-btn";
+    btn.textContent = s;
+    btn.style.background = getVal()===s ? SEV_COLOR[s] : "#1e293b";
+    btn.style.color = getVal()===s ? "#fff" : "#64748b";
+    btn.onclick = () => { setVal(s); buildSevPicker(containerId, getVal, setVal); };
+    c.appendChild(btn);
+  });
+}
+function updateSaveBtn(noteId, btnId) {
+  const val = document.getElementById(noteId).value.trim();
+  const btn = document.getElementById(btnId);
+  btn.style.background = val ? "#f97316" : "#334155";
+  btn.style.color = val ? "#fff" : "#64748b";
+}
+
+// ── View switching ────────────────────────────────────────────────────────────
+function showView(name) {
+  document.querySelectorAll(".view").forEach(v => v.classList.remove("active"));
+  document.getElementById("view-"+name).classList.add("active");
+  window.scrollTo(0,0);
+}
+function showMap() { showView("map"); renderSVG(); }
+
+// ── Export ────────────────────────────────────────────────────────────────────
+function openExport() {
+  const total = Object.values(logs).flat().length;
+  const areas = Object.keys(logs).filter(k=>logs[k].length>0).length;
+  document.getElementById("export-summary").textContent = total + " entries across " + areas + " areas";
+  document.getElementById("patient-name").value = "";
+  document.getElementById("export-modal").style.display = "flex";
+}
+function closeExport() { document.getElementById("export-modal").style.display = "none"; }
+
+function getAllEntries() {
+  const all = [];
+  Object.entries(logs).forEach(([id, entries]) => {
+    entries.forEach(e => all.push({label:labelForId(id), ...e}));
+  });
+  return all.sort((a,b) => b.ts - a.ts);
+}
+
+function buildReportHTML(patientName) {
+  const all = getAllEntries();
+  const areas = [...new Set(all.map(e=>e.label))];
+  const name = patientName || "";
+  const rows = all.map(e => `<tr>
+    <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;font-weight:500">${e.label}</td>
+    <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;color:${SEV_COLOR_PRINT[e.severity]};font-weight:bold">${e.severity}</td>
+    <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb;white-space:nowrap;color:#6b7280;font-size:13px">${fmt(e.ts)}</td>
+    <td style="padding:8px 12px;border-bottom:1px solid #e5e7eb">${e.note}</td>
+  </tr>`).join("");
+  return `<!DOCTYPE html><html><head><meta charset="UTF-8"/><title>Symptom Report</title>
+  <style>body{font-family:Georgia,serif;max-width:800px;margin:40px auto;padding:0 24px;color:#111;}
+  h1{font-size:26px;margin-bottom:4px;}.meta{color:#6b7280;font-size:14px;margin-bottom:28px;}
+  .summary{background:#f9fafb;border:1px solid #e5e7eb;border-radius:8px;padding:16px 20px;margin-bottom:28px;}
+  .tags{display:flex;flex-wrap:wrap;gap:8px;}.tag{background:#e0f2fe;color:#0369a1;border-radius:20px;padding:3px 12px;font-size:13px;}
+  table{width:100%;border-collapse:collapse;font-size:14px;}th{background:#f3f4f6;padding:10px 12px;text-align:left;font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:#6b7280;}
+  @media print{body{margin:20px;}}</style></head><body>
   <h1>Symptom Log Report</h1>
-  <div class="meta">
-    ${patientName ? `<b>Patient:</b> ${patientName} &nbsp;·&nbsp; ` : ""}
-    <b>Generated:</b> ${fmt(Date.now())} &nbsp;·&nbsp;
-    <b>Total entries:</b> ${allEntries.length}
-  </div>
-  <div class="summary">
-    <h2>Affected Areas (${affectedAreas.length})</h2>
-    <div class="tags">${affectedAreas.map(a=>`<span class="tag">${a}</span>`).join("")}</div>
-  </div>
-  <table>
-    <thead><tr><th>Area</th><th>Severity</th><th>Date / Time</th><th>Notes</th></tr></thead>
-    <tbody>${rows}</tbody>
-  </table>
+  <div class="meta">${name?"<b>Patient:</b> "+name+" &nbsp;·&nbsp; ":""}<b>Generated:</b> ${fmt(Date.now())} &nbsp;·&nbsp; <b>Total entries:</b> ${all.length}</div>
+  <div class="summary"><h2 style="font-size:15px;margin-bottom:8px;color:#374151;">Affected Areas (${areas.length})</h2>
+  <div class="tags">${areas.map(a=>'<span class="tag">'+a+'</span>').join("")}</div></div>
+  <table><thead><tr><th>Area</th><th>Severity</th><th>Date / Time</th><th>Notes</th></tr></thead><tbody>${rows}</tbody></table>
   </body></html>`;
 }
 
-function downloadHTML(logs, patientName) {
-  const html = buildSummaryHTML(logs, patientName);
-  const blob = new Blob([html], { type:"text/html" });
-  const url = URL.createObjectURL(blob);
+function doPrint() {
+  const html = buildReportHTML(document.getElementById("patient-name").value);
+  const w = window.open("","_blank");
+  w.document.write(html); w.document.close(); w.focus();
+  setTimeout(() => w.print(), 400);
+}
+function doDownloadHTML() {
+  const html = buildReportHTML(document.getElementById("patient-name").value);
   const a = document.createElement("a");
-  a.href = url; a.download = `symptom-report-${new Date().toISOString().slice(0,10)}.html`;
-  a.click(); URL.revokeObjectURL(url);
+  a.href = URL.createObjectURL(new Blob([html],{type:"text/html"}));
+  a.download = "symptom-report-"+new Date().toISOString().slice(0,10)+".html";
+  a.click();
+}
+function doDownloadCSV() {
+  const all = getAllEntries();
+  const rows = [["Area","Severity","Date/Time","Notes"]];
+  all.forEach(e => rows.push(['"'+e.label+'"', e.severity, fmt(e.ts), '"'+e.note.replace(/"/g,'""')+'"']));
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([rows.map(r=>r.join(",")).join("\n")],{type:"text/csv"}));
+  a.download = "symptom-log-"+new Date().toISOString().slice(0,10)+".csv";
+  a.click();
 }
 
-function printReport(logs, patientName) {
-  const html = buildSummaryHTML(logs, patientName);
-  const win = window.open("","_blank");
-  win.document.write(html);
-  win.document.close();
-  win.focus();
-  setTimeout(() => win.print(), 400);
-}
-
-// ─── Body SVG ────────────────────────────────────────────────────────────────
-function BodySVG({ parts, logs, onTap, onLongPress, multiSelect, selectedIds }) {
-  const timers = React.useRef({});
-  function color(id) {
-    if (multiSelect && selectedIds.includes(id)) return "#38bdf8";
-    if (logs[id]?.length) return SEV_COLOR[logs[id][logs[id].length-1].severity];
-    return "#c7d2e8";
-  }
-  function opacity(id) {
-    if (multiSelect && selectedIds.includes(id)) return 0.95;
-    return logs[id]?.length ? 0.85 : 0.32;
-  }
-  function stroke(id) {
-    if (multiSelect && selectedIds.includes(id)) return "#7dd3fc";
-    if (logs[id]?.length) return SEV_COLOR[logs[id][logs[id].length-1].severity];
-    return "#475569";
-  }
-  function startPress(p) { timers.current[p.id] = setTimeout(() => { if (navigator.vibrate) navigator.vibrate(40); onLongPress(p); }, 500); }
-  function endPress(p) { clearTimeout(timers.current[p.id]); }
-  return (
-    <svg viewBox="0 0 320 435" style={{width:"100%",display:"block",padding:"0 10px",touchAction:"none",userSelect:"none"}}>
-      <ellipse cx="160" cy="42" rx="26" ry="28" fill="#1e293b" stroke="#334155" strokeWidth="1.5"/>
-      <rect x="138" y="68" width="44" height="20" rx="8" fill="#1e293b" stroke="#334155" strokeWidth="1.5"/>
-      <path d="M138 88 Q110 95 95 108 L78 175 Q75 195 70 210 L62 240 Q58 255 55 270" fill="#1e293b" stroke="#334155" strokeWidth="1.5"/>
-      <path d="M182 88 Q210 95 225 108 L242 175 Q245 195 250 210 L258 240 Q262 255 265 270" fill="#1e293b" stroke="#334155" strokeWidth="1.5"/>
-      <rect x="130" y="88" width="60" height="145" rx="14" fill="#1e293b" stroke="#334155" strokeWidth="1.5"/>
-      <path d="M135 228 L112 250 Q108 295 108 315 Q108 340 110 365 L110 406 Q112 418 118 420 L126 420 Q132 417 130 410 L128 385" fill="#1e293b" stroke="#334155" strokeWidth="1.5"/>
-      <path d="M185 228 L208 250 Q212 295 212 315 Q212 340 210 365 L210 406 Q208 418 202 420 L194 420 Q188 417 190 410 L192 385" fill="#1e293b" stroke="#334155" strokeWidth="1.5"/>
-      {parts.map(p => (
-        <g key={p.id} onClick={() => onTap(p)}
-          onTouchStart={() => startPress(p)} onTouchEnd={() => endPress(p)} onTouchMove={() => endPress(p)}
-          style={{cursor:"pointer"}}>
-          <circle cx={p.cx} cy={p.cy} r={p.r+10} fill="transparent"/>
-          <circle cx={p.cx} cy={p.cy} r={p.r} fill={color(p.id)} opacity={opacity(p.id)} stroke={stroke(p.id)} strokeWidth={multiSelect&&selectedIds.includes(p.id)?3:logs[p.id]?.length?2:1}/>
-          {multiSelect&&selectedIds.includes(p.id)&&<text x={p.cx} y={p.cy+1} textAnchor="middle" dominantBaseline="middle" fontSize="12" fill="#0f172a" fontWeight="bold">✓</text>}
-          {!multiSelect&&logs[p.id]?.length>0&&<text x={p.cx} y={p.cy+1} textAnchor="middle" dominantBaseline="middle" fontSize="11" fill="#fff" fontWeight="bold">{logs[p.id].length}</text>}
-        </g>
-      ))}
-    </svg>
-  );
-}
-
-// ─── Shared UI ───────────────────────────────────────────────────────────────
-function SevPicker({ value, onChange }) {
-  return (
-    <div style={{marginBottom:16}}>
-      <div style={{fontSize:11,color:"#94a3b8",marginBottom:8,letterSpacing:1,textTransform:"uppercase"}}>Severity</div>
-      <div style={{display:"flex",gap:10}}>
-        {SEVERITY.map(s=>(
-          <button key={s} onClick={()=>onChange(s)} style={{flex:1,padding:"10px 0",borderRadius:8,border:"none",cursor:"pointer",background:value===s?SEV_COLOR[s]:"#1e293b",color:value===s?"#fff":"#64748b",fontSize:13,fontWeight:"bold",transition:"all 0.15s"}}>{s}</button>
-        ))}
-      </div>
-    </div>
-  );
-}
-function NoteInput({ value, onChange }) {
-  return (
-    <div style={{marginBottom:20}}>
-      <div style={{fontSize:11,color:"#94a3b8",marginBottom:8,letterSpacing:1,textTransform:"uppercase"}}>Description</div>
-      <textarea value={value} onChange={e=>onChange(e.target.value)} placeholder="Describe the pain, ache, or symptom…" rows={4}
-        style={{width:"100%",background:"#1e293b",border:"1px solid #334155",borderRadius:10,padding:"12px",color:"#e2e8f0",fontSize:14,resize:"none",outline:"none"}}/>
-    </div>
-  );
-}
-function SaveBtn({ label, disabled, onClick }) {
-  return <button onClick={onClick} disabled={disabled} style={{width:"100%",padding:"14px",border:"none",borderRadius:10,fontSize:15,fontWeight:"bold",cursor:disabled?"default":"pointer",transition:"all 0.2s",background:disabled?"#334155":"#f97316",color:disabled?"#64748b":"#fff"}}>{label}</button>;
-}
-function BackBtn({ onClick, label="← Back" }) {
-  return <button onClick={onClick} style={{background:"none",border:"none",color:"#64748b",fontSize:13,cursor:"pointer",padding:"0 0 12px 0"}}>{label}</button>;
-}
-function Chips({ ids, onRemove }) {
-  return (
-    <div style={{display:"flex",flexWrap:"wrap",gap:6,marginBottom:16}}>
-      {ids.map(id=>(
-        <div key={id} style={{background:"#0c4a6e",color:"#38bdf8",borderRadius:20,padding:"4px 10px",fontSize:12,display:"flex",alignItems:"center",gap:6}}>
-          {labelForId(id)}
-          {onRemove&&<span onClick={()=>onRemove(id)} style={{cursor:"pointer",color:"#7dd3fc",fontWeight:"bold"}}>×</span>}
-        </div>
-      ))}
-    </div>
-  );
-}
-
-// ─── Export Modal ─────────────────────────────────────────────────────────────
-function ExportModal({ logs, onClose }) {
-  const [name, setName] = React.useState("");
-  const totalEntries = Object.values(logs).flat().length;
-
-  return (
-    <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.7)",display:"flex",alignItems:"flex-end",zIndex:100}} onClick={onClose}>
-      <div onClick={e=>e.stopPropagation()} style={{background:"#1e293b",borderRadius:"16px 16px 0 0",padding:"24px 20px 36px",width:"100%",maxWidth:420,margin:"0 auto"}}>
-        <div style={{width:36,height:4,background:"#334155",borderRadius:2,margin:"0 auto 20px"}}/>
-        <div style={{fontSize:18,fontWeight:"bold",marginBottom:4}}>Export Symptom Report</div>
-        <div style={{fontSize:13,color:"#64748b",marginBottom:20}}>{totalEntries} entries across {Object.keys(logs).filter(k=>logs[k].length>0).length} areas</div>
-
-        <div style={{marginBottom:20}}>
-          <div style={{fontSize:11,color:"#94a3b8",marginBottom:8,letterSpacing:1,textTransform:"uppercase"}}>Patient name (optional)</div>
-          <input value={name} onChange={e=>setName(e.target.value)} placeholder="e.g. John Smith"
-            style={{width:"100%",background:"#0f172a",border:"1px solid #334155",borderRadius:10,padding:"12px",color:"#e2e8f0",fontSize:14,outline:"none"}}/>
-        </div>
-
-        <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          <button onClick={()=>{ printReport(logs, name); }} style={{padding:"14px",background:"#0f172a",border:"1px solid #334155",borderRadius:10,color:"#e2e8f0",fontSize:14,fontWeight:"bold",cursor:"pointer",textAlign:"left",display:"flex",alignItems:"center",gap:12}}>
-            <span style={{fontSize:22}}>🖨️</span>
-            <div>
-              <div>Print / Save as PDF</div>
-              <div style={{fontSize:12,color:"#64748b",fontWeight:"normal"}}>Opens print dialog — save as PDF to share</div>
-            </div>
-          </button>
-
-          <button onClick={()=>{ downloadHTML(logs, name); }} style={{padding:"14px",background:"#0f172a",border:"1px solid #334155",borderRadius:10,color:"#e2e8f0",fontSize:14,fontWeight:"bold",cursor:"pointer",textAlign:"left",display:"flex",alignItems:"center",gap:12}}>
-            <span style={{fontSize:22}}>📄</span>
-            <div>
-              <div>Download as HTML</div>
-              <div style={{fontSize:12,color:"#64748b",fontWeight:"normal"}}>Formatted report — open in any browser</div>
-            </div>
-          </button>
-
-          <button onClick={()=>{ downloadCSV(logs); }} style={{padding:"14px",background:"#0f172a",border:"1px solid #334155",borderRadius:10,color:"#e2e8f0",fontSize:14,fontWeight:"bold",cursor:"pointer",textAlign:"left",display:"flex",alignItems:"center",gap:12}}>
-            <span style={{fontSize:22}}>📊</span>
-            <div>
-              <div>Download as CSV</div>
-              <div style={{fontSize:12,color:"#64748b",fontWeight:"normal"}}>Spreadsheet — for Excel or patient portals</div>
-            </div>
-          </button>
-        </div>
-
-        <button onClick={onClose} style={{marginTop:16,width:"100%",padding:"12px",background:"transparent",border:"none",color:"#475569",fontSize:14,cursor:"pointer"}}>Cancel</button>
-      </div>
-    </div>
-  );
-}
-
-// ─── App ─────────────────────────────────────────────────────────────────────
-function App() {
-  const [logs, setLogs] = React.useState({});
-  const [loading, setLoading] = React.useState(true);
-  const [view, setView] = React.useState("map");
-  const [side, setSide] = React.useState("front");
-  const [selected, setSelected] = React.useState(null);
-  const [multiSelect, setMultiSelect] = React.useState(false);
-  const [selectedIds, setSelectedIds] = React.useState([]);
-  const [form, setForm] = React.useState({ note:"", severity:"Mild" });
-  const [showExport, setShowExport] = React.useState(false);
-
-  React.useEffect(() => {
-    dbGet("logs").then(data => { if (data) setLogs(data); setLoading(false); }).catch(() => setLoading(false));
-  }, []);
-
-  async function saveLogs(next) { setLogs(next); try { await dbSet("logs", next); } catch(e) { console.error(e); } }
-
-  function handleTap(p) {
-    if (multiSelect) { setSelectedIds(prev => prev.includes(p.id) ? prev.filter(id=>id!==p.id) : [...prev, p.id]); }
-    else { setSelected(p); setView("detail"); }
-  }
-  function handleLongPress(p) { if (!multiSelect) { setMultiSelect(true); setSelectedIds([p.id]); } }
-  function cancelMulti() { setMultiSelect(false); setSelectedIds([]); }
-
-  async function saveEntry() {
-    if (!form.note.trim()) return;
-    const entry = { note:form.note.trim(), severity:form.severity, ts:Date.now() };
-    await saveLogs({ ...logs, [selected.id]: [...(logs[selected.id]||[]), entry] });
-    setForm({ note:"", severity:"Mild" }); setView("detai
+// ── Init ──────────────────────────────────────────────────────────────────────
+(async () => {
+  try {
+    const data = await dbGet("logs");
+    if (data) logs = data;
+  } catch(e) { console.error(e); }
+  updateStats();
+  setSide("front");
+  renderSVG();
+})();
+</script>
+</body>
+</html>
